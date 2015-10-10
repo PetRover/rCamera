@@ -1,0 +1,59 @@
+//
+// Created by Bryce Cater on 10/5/15.
+//
+
+#ifndef RCORE_RCAMERA_H
+#define RCORE_RCAMERA_H
+
+#include <libuvc/libuvc.h>
+#include <string>
+#include <opencv2/opencv.hpp>
+
+namespace RVR
+{
+    void processUvcErrorResult(uvc_error errorResult, std::string message);
+
+    class Camera
+    {
+    private:
+        int frameWidth;
+        int frameHeight;
+
+        int fps;
+        uvc_frame_format frameFormat;
+
+        bool streaming = false;
+        bool initialized = false;
+
+
+        uvc_context *context;
+        uvc_device *device;
+        uvc_device_handle *deviceHandle;
+        uvc_stream_ctrl_t streamController;
+        uvc_error errorResult;
+
+        uvc_frame_callback_t* frameCallback;
+
+    public:
+        void setupStream(uvc_frame_format format, int width, int height, int fps);
+        void setStreamMode(uvc_frame_format format, int width, int height, int fps);
+        void setFrameCallback(uvc_frame_callback_t callback);
+        void setAutoExposure(bool aeOn);
+
+        void startStream();
+        void stopStream();
+        uvc_frame_format getFrameFormat();
+
+        ~Camera();
+    };
+
+    cv::Mat frameToMat(uvc_frame* frame, int matrixType);
+    void sendFrame(uvc_frame_t* frame, void* camera);
+    void saveFrame(uvc_frame_t* frame, void* camera);
+    void showFrame(uvc_frame_t* frame, void* camera);
+
+    void dummyCallback(uvc_frame_t* frame, void* camera);
+
+}
+
+#endif //RCORE_RCAMERA_H

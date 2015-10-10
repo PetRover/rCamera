@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.3)
+
+FIND_PACKAGE(OpenCV REQUIRED core imgproc highgui imgcodecs)
+FIND_PACKAGE(libuvc REQUIRED)
+
+INCLUDE_DIRECTORIES(SYSTEM ${libuvc_INCLUDE_DIRS})
+INCLUDE_DIRECTORIES("./../rWifi")
+INCLUDE_DIRECTORIES("./../rCore")
+
+ADD_LIBRARY(rCamera STATIC camera.cpp rCamera.h)
+TARGET_LINK_LIBRARIES(rCamera ${OpenCV_LIBS})
+TARGET_LINK_LIBRARIES(rCamera ${libuvc_LIBRARIES})
+TARGET_LINK_LIBRARIES(rCamera rWifi)
