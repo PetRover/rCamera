@@ -5,6 +5,7 @@
 #include "rCamera.h"
 #include "../rCore/easylogging++.h"
 #include "rWifi.h"
+#include <stdexcept>
 
 #ifdef USE_OPEN_CV
     #include <opencv2/opencv.hpp>
