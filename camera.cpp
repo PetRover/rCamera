@@ -5,7 +5,11 @@
 #include "rCamera.h"
 #include "../rCore/easylogging++.h"
 #include "rWifi.h"
-#include <opencv2/opencv.hpp>
+
+#ifdef USE_OPEN_CV
+    #include <opencv2/opencv.hpp>
+#endif
+
 
 namespace RVR
 {
@@ -126,7 +130,16 @@ namespace RVR
         uvc_exit(this->context);
     }
 
+    void sendFrame(uvc_frame *frame, void *camera)
+    {
+        // TODO Super rough mockup... lots of work still needs to be done here
+        NetworkManager nm = NetworkManager();
+//        NetworkChunk chunk = NetworkChunk(frame->data, frame->data_bytes);
 
+//        nm.sendData("USBConnection", frame->data);
+    }
+
+#ifdef USE_OPEN_CV
     cv::Mat frameToMat(uvc_frame *frame, int matrixType)
     {
         uvc_frame * tempFrame;
@@ -145,15 +158,6 @@ namespace RVR
         cv::Mat img = cv::Mat::Mat(tempFrame->height, tempFrame->width, CV_8UC3, tempFrame->data, tempFrame->step);
         uvc_free_frame(tempFrame);
         return img;
-    }
-
-    void sendFrame(uvc_frame *frame, void *camera)
-    {
-        // TODO Super rough mockup... lots of work still needs to be done here
-        NetworkManager nm = NetworkManager();
-//        NetworkChunk chunk = NetworkChunk(frame->data, frame->data_bytes);
-
-//        nm.sendData("USBConnection", frame->data);
     }
 
     void saveFrame(uvc_frame *frame, void *camera)
@@ -182,6 +186,6 @@ namespace RVR
         img.release();
 
     }
-
+#endif
     void dummyCallback(uvc_frame* frame, void* camera) {}
 }

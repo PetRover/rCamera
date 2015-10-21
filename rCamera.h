@@ -2,9 +2,11 @@
 // Created by Bryce Cater on 10/5/15.
 //
 
+
 #ifndef RCORE_RCAMERA_H
 #define RCORE_RCAMERA_H
 
+//#define USE_OPEN_CV
 #include <libuvc/libuvc.h>
 #include <string>
 #include <opencv2/opencv.hpp>
@@ -47,10 +49,13 @@ namespace RVR
         ~Camera();
     };
 
-    cv::Mat frameToMat(uvc_frame* frame, int matrixType);
     void sendFrame(uvc_frame_t* frame, void* camera);
+
+#ifdef USE_OPEN_CV
+    cv::Mat frameToMat(uvc_frame* frame, int matrixType);
     void saveFrame(uvc_frame_t* frame, void* camera);
     void showFrame(uvc_frame_t* frame, void* camera);
+#endif
 
     void dummyCallback(uvc_frame_t* frame, void* camera);
 
