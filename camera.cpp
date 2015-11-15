@@ -27,6 +27,12 @@ namespace RVR
 // Camera Class Member functions
 // ==============================================================
 
+
+    Camera::Camera(NetworkManager *networkManager)
+    {
+        this->networkManager = networkManager;
+    }
+
     void Camera::setupStream(uvc_frame_format format, int width, int height, int fps)
     {
         VLOG(1) << "Setting up camera.";
@@ -133,11 +139,10 @@ namespace RVR
 
     void sendFrame(uvc_frame *frame, void *camera)
     {
-        // TODO Super rough mockup... lots of work still needs to be done here
-        NetworkManager nm = NetworkManager();
-//        NetworkChunk chunk = NetworkChunk(frame->data, frame->data_bytes);
+        NetworkChunk nc = NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
 
-//        nm.sendData("USBConnection", frame->data);
+        Camera* cam = (Camera*)camera;
+        cam->networkManager->sendData("CAMERA",&nc);
     }
 
 #ifdef USE_OPEN_CV

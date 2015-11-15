@@ -9,6 +9,7 @@
 //#define USE_OPEN_CV
 #include <libuvc/libuvc.h>
 #include <string>
+#include "rWifi.h"
 #ifdef USE_OPEN_CV
     #include <opencv2/opencv.hpp>
 #endif
@@ -47,6 +48,9 @@ namespace RVR
         void stopStream();
         uvc_frame_format getFrameFormat();
 
+        NetworkManager* networkManager;
+
+        Camera(NetworkManager* networkManager);
         ~Camera();
     };
 
