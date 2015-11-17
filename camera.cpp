@@ -145,6 +145,18 @@ namespace RVR
         cam->networkManager->sendData("CAMERA",&nc);
     }
 
+#ifdef LOCAL_STREAM
+
+    void queueFrame(uvc_frame_t *frame, void *camera)
+    {
+        NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
+
+        Camera* cam = (Camera*)camera;
+        cam->frameQueue.push(nc);
+    }
+
+#endif
+
 #ifdef USE_OPEN_CV
     cv::Mat frameToMat(uvc_frame *frame, int matrixType)
     {

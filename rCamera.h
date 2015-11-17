@@ -9,7 +9,11 @@
 //#define USE_OPEN_CV
 #include <libuvc/libuvc.h>
 #include <string>
+#include <queue>
 #include "rWifi.h"
+
+#define LOCAL_STREAM
+
 #ifdef USE_OPEN_CV
     #include <opencv2/opencv.hpp>
 #endif
@@ -50,11 +54,19 @@ namespace RVR
 
         NetworkManager* networkManager;
 
+#ifdef LOCAL_STREAM
+        std::queue<NetworkChunk*> frameQueue = std::queue<NetworkChunk*>();
+#endif
+
         Camera(NetworkManager* networkManager);
         ~Camera();
     };
 
     void sendFrame(uvc_frame_t* frame, void* camera);
+
+#ifdef LOCAL_STREAM
+    void queueFrame(uvc_frame_t* frame, void* camera);
+#endif
 
 #ifdef USE_OPEN_CV
     cv::Mat frameToMat(uvc_frame* frame, int matrixType);
