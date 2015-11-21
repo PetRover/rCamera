@@ -4,8 +4,6 @@
 
 #include "rCamera.h"
 #include "../rCore/easylogging++.h"
-#include "rWifi.h"
-#include <stdexcept>
 
 #ifdef USE_OPEN_CV
     #include <opencv2/opencv.hpp>
@@ -14,14 +12,6 @@
 
 namespace RVR
 {
-    void processUvcErrorResult(uvc_error errorResult, std::string message)
-    {
-        if (errorResult < 0)
-        {
-            LOG(ERROR) << "[ FAILURE ] " << uvc_strerror(errorResult);
-            throw std::runtime_error(message);
-        }
-    }
 
 // ==============================================================
 // Camera Class Member functions
@@ -33,90 +23,125 @@ namespace RVR
         this->networkManager = networkManager;
     }
 
-    void Camera::setupStream(uvc_frame_format format, int width, int height, int fps)
+    void Camera::setupStream(PixelFormat format, int width, int height, int fps)
     {
         VLOG(1) << "Setting up camera.";
 
-        VLOG(2) << "Creating context object for UVC device...";
-        this->errorResult = uvc_init(&this->context, NULL);
-        processUvcErrorResult(this->errorResult, "Failed to create UVC context");
-        VLOG(2) << "[ DONE ]\n";
-
-        VLOG(2) << "Finding UVC camera device...";
-        this->errorResult = uvc_find_device(this->context, &this->device, 0, 0, NULL);
-        processUvcErrorResult(this->errorResult, "Failed to find UVC camera device");
-        VLOG(2) << "[ DONE ]\n";
-
-        VLOG(2) << "Opening UVC camera device...";
-        this->errorResult = uvc_open(this->device, &this->deviceHandle);
-        processUvcErrorResult(this->errorResult, "Failed to open UVC camera");
-        VLOG(2) << "[ DONE ]\n";
-
-        if (VLOG_IS_ON(3))
+        VLOG(2) << "Opening file descriptor for camera...";
+        if ((this->cameraFd = open("/dev/video0", O_RDWR)) < 0)
         {
-            uvc_print_diag(this->deviceHandle, stdout);
+            LOG(ERROR) << "Failed to obtain file descriptor for the camera";
+            throw std::runtime_error("failed to open camera");
         }
+        VLOG(2) << "[ DONE ] fd ope\n";
 
         this->setStreamMode(format, width, height, fps);
 
         this->streaming = false;
-        this->setFrameCallback(dummyCallback);
+//        this->setFrameCallback(dummyCallback);
 
         this->initialized = true;
     }
 
-    void Camera::setStreamMode(uvc_frame_format format, int width, int height, int fps)
+    void Camera::setStreamMode(PixelFormat pixelFormat, int width, int height, int fps)
     {
-        VLOG(2) << "Negotiating UVC stream mode...";
-        this->errorResult = uvc_get_stream_ctrl_format_size(this->deviceHandle, &this->streamController,
-                                                            format, width, height, fps);
-        processUvcErrorResult(this->errorResult, "Failed to negotiate stream mode");
-        if (VLOG_IS_ON(3))
-        {
-            uvc_print_stream_ctrl(&this->streamController, stdout);
-        }
-        VLOG(2) << "[ DONE ]\n";
+        VLOG(2) << "Negotiating camera stream mode...";
+        struct v4l2_format frameFormat;
+        frameFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        frameFormat.fmt.pix.pixelformat = pixelFormat;
+        frameFormat.fmt.pix.width = width;
+        frameFormat.fmt.pix.height = height;
 
-        this->frameFormat = format;
+        if (ioctl(this->cameraFd, VIDIOC_S_FMT, &frameFormat) < 0)
+        {
+            LOG(ERROR) << "Failed to set the stream mode of the camera";
+            throw std::runtime_error("failed to set stream mode");
+        }
+        VLOG(2) << "[ DONE ] stream negotiated\n";
+
+        this->frameFormat = frameFormat;
         this->frameWidth = width;
         this->frameHeight = height;
-        this->fps = fps;
+        this->fps = fps; // TODO either implement fps handling or remove the parameter
 
+        VLOG(2) << "Negotiating buffer memory with camera...";
+        struct v4l2_requestbuffers bufrequest;
+        bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        bufrequest.memory = V4L2_MEMORY_MMAP;
+        bufrequest.count = 1;
+
+        if (ioctl(this->cameraFd, VIDIOC_REQBUFS, &bufrequest) < 0)
+        {
+            LOG(ERROR) << "Failed to request the buffer for the camera";
+            throw std::runtime_error("failed to request camera buffer");
+        }
+
+        this->bufferInfo;
+        memset(&this->bufferInfo, 0, sizeof(this->bufferInfo));
+
+        this->bufferInfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        this->bufferInfo.memory = V4L2_MEMORY_MMAP;
+        this->bufferInfo.index = 0;
+
+        if (ioctl(this->cameraFd, VIDIOC_QUERYBUF, &this->bufferInfo) < 0)
+        {
+            LOG(ERROR) << "Failed to query the buffer for the camera";
+            throw std::runtime_error("failed to query camera buffer");
+        }
+
+        this->bufferStart = (char *) mmap(
+                NULL,
+                this->bufferInfo.length,
+                PROT_READ | PROT_WRITE,
+                MAP_SHARED,
+                this->cameraFd,
+                this->bufferInfo.m.offset
+        );
+
+        if (this->bufferStart == MAP_FAILED)
+        {
+            perror("mmap");
+            exit(1);
+        }
+
+        memset(this->bufferStart, 0, this->bufferInfo.length);
+
+        VLOG(2) << "[ DONE ] buffers negotiated\n";
     }
 
-    void Camera::setFrameCallback(uvc_frame_callback_t callback)
-    {
-        this->frameCallback = callback;
-    }
+//    void Camera::setFrameCallback(FrameCallback *callback)
+//    {
+//        this->frameCallback = callback;
+//    }
 
     void Camera::startStream()
     {
-        VLOG(2) << "Starting UVC stream...";
-        this->errorResult = uvc_start_streaming(this->deviceHandle, &this->streamController, this->frameCallback, this, 0);
-        processUvcErrorResult(this->errorResult, "Failed start UVC camera stream");
-        VLOG(2) << "[ DONE ]\n";
+        VLOG(2) << "Starting camera stream...";
+        int type = this->bufferInfo.type;
+        if (ioctl(this->cameraFd, VIDIOC_STREAMON, &type) < 0)
+        {
+            LOG(ERROR) << "Failed to start the camera stream";
+            throw std::runtime_error("failed to start stream");
+        }
+        VLOG(2) << "[ DONE ] stream started\n";
 
         this->streaming = true;
     }
 
     void Camera::stopStream()
     {
-        VLOG(2) << "Stopping UVC stream...";
-        try
-        {
-            uvc_stop_streaming(this->deviceHandle);
+        VLOG(2) << "Stopping camera stream...";
+        int type = this->bufferInfo.type;
+        if(ioctl(this->cameraFd, VIDIOC_STREAMOFF, &type) < 0){
+            LOG(ERROR) << "Failed to stop the camera stream";
+            throw std::runtime_error("failed to stop stream");
         }
-        catch (...)
-        {
-            LOG(ERROR) << "Failed to stop stream";
-            throw;
-        }
-        VLOG(2) << "[ DONE ]\n";
+        VLOG(2) << "[ DONE ] stream stopped\n";
 
         this->streaming = false;
     }
 
-    uvc_frame_format Camera::getFrameFormat()
+    v4l2_format Camera::getFrameFormat()
     {
         return this->frameFormat;
     }
@@ -124,86 +149,122 @@ namespace RVR
     void Camera::setAutoExposure(bool aeOn)
     {
         VLOG(2) << "Settign Auto-Exposure ON to: " << aeOn;
-        uvc_set_ae_mode(this->deviceHandle, 1);
+        LOG(WARNING) << "NOT IMPLEMENTED... DOING NOTHING";
+        // TODO Implement this
         VLOG(2) << "[ DONE ]\n";
     }
 
 
     Camera::~Camera()
     {
+        VLOG(2) << "Destroying Camera object";
         this->stopStream();
-        uvc_close(this->deviceHandle);
-        uvc_unref_device(this->device);
-        uvc_exit(this->context);
+
+        close(this->cameraFd);
+        VLOG(2) << "[ DONE ] camera obj destroyed";
     }
+//
+//    void sendFrame(Frame *frame, void *camera)
+//    {
+//        NetworkChunk nc = NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
+//
+//        Camera* cam = (Camera*)camera;
+//        cam->networkManager->sendData("CAMERA",&nc);
+//    }
+//
+//#ifdef LOCAL_STREAM
+//
+//    void queueFrame(Frame *frame, void *camera)
+//    {
+//        NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
+//
+//        Camera* cam = (Camera*)camera;
+//        cam->frameQueue.push(nc);
+//    }
+//
+//#endif
+//
+//#ifdef USE_OPEN_CV
+//    cv::Mat frameToMat(Frame *frame, int matrixType)
+//    {
+//        uvc_frame * tempFrame;
+//        if (frame->frame_format != UVC_FRAME_FORMAT_BGR)
+//        {
+//            uvc_error errorResult;
+//            tempFrame = uvc_allocate_frame(frame->width * frame->height * 3);
+//            errorResult = uvc_any2bgr(frame, tempFrame);
+//            processUvcErrorResult(errorResult, "Failed to convert frame to rgb");
+//        }
+//        else
+//        {
+//            tempFrame = frame;
+//        }
+//
+//        cv::Mat img = cv::Mat::Mat(tempFrame->height, tempFrame->width, CV_8UC3, tempFrame->data, tempFrame->step);
+//        uvc_free_frame(tempFrame);
+//        return img;
+//    }
+//
+//    void saveFrame(Frame *frame, void *camera)
+//    {
+//        Camera* cam = (Camera*)camera;
+//
+//
+//        char filename[100];
+//        snprintf(filename, sizeof(filename), "%i.jpg", frame->sequence);
+//        VLOG_EVERY_N(30,2) << "Saving image file" << filename << "...";
+//        cv::Mat img = frameToMat(frame, CV_8UC3);
+//        cv::imwrite( filename, img );
+//        img.release();
+//        VLOG_EVERY_N(30,2) << "[ DONE ]";
+//    }
+//
+//    void showFrame(Frame *frame, void *camera)
+//    {
+//        cv::waitKey(1);
+//        cv::Mat img = frameToMat(frame, CV_8UC3);
+////        cv::Mat image;
+////        image = cv::imread("1.jpg", cv::IMREAD_COLOR);
+////        cv::namedWindow( "window", cv::WINDOW_AUTOSIZE );
+//        cv::imshow( "frame", img );
+//
+//        img.release();
+//
+//    }
+//#endif
+    void dummyCallback(Frame *frame, Camera *camera) {}
 
-    void sendFrame(uvc_frame *frame, void *camera)
+    NetworkChunk *Camera::getFrameNC_BAD_TEMP_FUNC()
     {
-        NetworkChunk nc = NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
-
-        Camera* cam = (Camera*)camera;
-        cam->networkManager->sendData("CAMERA",&nc);
-    }
-
-#ifdef LOCAL_STREAM
-
-    void queueFrame(uvc_frame_t *frame, void *camera)
-    {
-        NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
-
-        Camera* cam = (Camera*)camera;
-        cam->frameQueue.push(nc);
-    }
-
-#endif
-
-#ifdef USE_OPEN_CV
-    cv::Mat frameToMat(uvc_frame *frame, int matrixType)
-    {
-        uvc_frame * tempFrame;
-        if (frame->frame_format != UVC_FRAME_FORMAT_BGR)
+        VLOG(2) << "GETTING FRAME!";
+        if (this->streaming)
         {
-            uvc_error errorResult;
-            tempFrame = uvc_allocate_frame(frame->width * frame->height * 3);
-            errorResult = uvc_any2bgr(frame, tempFrame);
-            processUvcErrorResult(errorResult, "Failed to convert frame to rgb");
+            if(ioctl(this->cameraFd, VIDIOC_QBUF, &(this->bufferInfo)) < 0){
+                perror("VIDIOC_QBUF");
+                exit(1);
+            }
+
+            // The buffer's waiting in the outgoing queue.
+            if(ioctl(this->cameraFd, VIDIOC_DQBUF, &(this->bufferInfo)) < 0){
+                perror("VIDIOC_QBUF");
+                exit(1);
+            }
+            int jpgfile;
+            if((jpgfile = open("/tmp/myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
+                perror("open");
+                exit(1);
+            }
+
+            NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
+            VLOG(2) << "[ DONE ] GOT FRAME";
+            return nc;
         }
         else
         {
-            tempFrame = frame;
+            NetworkChunk* nc = new NetworkChunk(DataType::NONE, 0, NULL);
+            VLOG(2) << "[ DONE ] NO FRAME TO GET";
+            return nc;
         }
-
-        cv::Mat img = cv::Mat::Mat(tempFrame->height, tempFrame->width, CV_8UC3, tempFrame->data, tempFrame->step);
-        uvc_free_frame(tempFrame);
-        return img;
     }
 
-    void saveFrame(uvc_frame *frame, void *camera)
-    {
-        Camera* cam = (Camera*)camera;
-
-
-        char filename[100];
-        snprintf(filename, sizeof(filename), "%i.jpg", frame->sequence);
-        VLOG_EVERY_N(30,2) << "Saving image file" << filename << "...";
-        cv::Mat img = frameToMat(frame, CV_8UC3);
-        cv::imwrite( filename, img );
-        img.release();
-        VLOG_EVERY_N(30,2) << "[ DONE ]";
-    }
-
-    void showFrame(uvc_frame *frame, void *camera)
-    {
-        cv::waitKey(1);
-        cv::Mat img = frameToMat(frame, CV_8UC3);
-//        cv::Mat image;
-//        image = cv::imread("1.jpg", cv::IMREAD_COLOR);
-//        cv::namedWindow( "window", cv::WINDOW_AUTOSIZE );
-        cv::imshow( "frame", img );
-
-        img.release();
-
-    }
-#endif
-    void dummyCallback(uvc_frame* frame, void* camera) {}
 }
