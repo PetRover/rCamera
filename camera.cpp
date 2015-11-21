@@ -3,15 +3,6 @@
 //
 
 #include "rCamera.h"
-#include "linux/videodev2.h"
-#include <time.h>
-#include <linux/videodev2.h>
-#include "../rCore/easylogging++.h"
-
-#ifdef USE_OPEN_CV
-    #include <opencv2/opencv.hpp>
-#endif
-
 
 namespace RVR
 {
@@ -42,7 +33,6 @@ namespace RVR
         this->setStreamMode(format, width, height, fps);
 
         this->streaming = false;
-//        this->setFrameCallback(dummyCallback);
 
         this->initialized = true;
         this->frameNumber = 0;
@@ -56,9 +46,9 @@ namespace RVR
         VLOG(3) << "frameFormat.type set to: " << frameFormat.type;
         frameFormat.fmt.pix.pixelformat = pixelFormat;
         VLOG(3) << "frameFormat.pixelformat set to: " << frameFormat.fmt.pix.pixelformat;
-        frameFormat.fmt.pix.width = width;
+        frameFormat.fmt.pix.width = (uint32_t)width;
         VLOG(3) << "frameFormat.width set to: " << frameFormat.fmt.pix.width;
-        frameFormat.fmt.pix.height = height;
+        frameFormat.fmt.pix.height = (uint32_t)height;
         VLOG(3) << "frameFormat.height set to: " << frameFormat.fmt.pix.height;
 
         VLOG(3) << "Making the IOCTL call to set the frame format...";
@@ -136,11 +126,6 @@ namespace RVR
         VLOG(2) << "[ DONE ] buffers negotiated\n";
     }
 
-//    void Camera::setFrameCallback(FrameCallback *callback)
-//    {
-//        this->frameCallback = callback;
-//    }
-
     void Camera::startStream()
     {
         VLOG(2) << "Starting camera stream...";
@@ -185,7 +170,6 @@ namespace RVR
         VLOG(2) << "[ DONE ]\n";
     }
 
-
     Camera::~Camera()
     {
         VLOG(2) << "Destroying Camera object";
@@ -194,76 +178,6 @@ namespace RVR
         close(this->cameraFd);
         VLOG(2) << "[ DONE ] camera obj destroyed";
     }
-//
-//    void sendFrame(Frame *frame, void *camera)
-//    {
-//        NetworkChunk nc = NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
-//
-//        Camera* cam = (Camera*)camera;
-//        cam->networkManager->sendData("CAMERA",&nc);
-//    }
-//
-//#ifdef LOCAL_STREAM
-//
-//    void queueFrame(Frame *frame, void *camera)
-//    {
-//        NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, frame->data_bytes, (char*)frame->data);
-//
-//        Camera* cam = (Camera*)camera;
-//        cam->frameQueue.push(nc);
-//    }
-//
-//#endif
-//
-//#ifdef USE_OPEN_CV
-//    cv::Mat frameToMat(Frame *frame, int matrixType)
-//    {
-//        uvc_frame * tempFrame;
-//        if (frame->frame_format != UVC_FRAME_FORMAT_BGR)
-//        {
-//            uvc_error errorResult;
-//            tempFrame = uvc_allocate_frame(frame->width * frame->height * 3);
-//            errorResult = uvc_any2bgr(frame, tempFrame);
-//            processUvcErrorResult(errorResult, "Failed to convert frame to rgb");
-//        }
-//        else
-//        {
-//            tempFrame = frame;
-//        }
-//
-//        cv::Mat img = cv::Mat::Mat(tempFrame->height, tempFrame->width, CV_8UC3, tempFrame->data, tempFrame->step);
-//        uvc_free_frame(tempFrame);
-//        return img;
-//    }
-//
-//    void saveFrame(Frame *frame, void *camera)
-//    {
-//        Camera* cam = (Camera*)camera;
-//
-//
-//        char filename[100];
-//        snprintf(filename, sizeof(filename), "%i.jpg", frame->sequence);
-//        VLOG_EVERY_N(30,2) << "Saving image file" << filename << "...";
-//        cv::Mat img = frameToMat(frame, CV_8UC3);
-//        cv::imwrite( filename, img );
-//        img.release();
-//        VLOG_EVERY_N(30,2) << "[ DONE ]";
-//    }
-//
-//    void showFrame(Frame *frame, void *camera)
-//    {
-//        cv::waitKey(1);
-//        cv::Mat img = frameToMat(frame, CV_8UC3);
-////        cv::Mat image;
-////        image = cv::imread("1.jpg", cv::IMREAD_COLOR);
-////        cv::namedWindow( "window", cv::WINDOW_AUTOSIZE );
-//        cv::imshow( "frame", img );
-//
-//        img.release();
-//
-//    }
-//#endif
-    void dummyCallback(Frame *frame, Camera *camera) {}
 
     NetworkChunk *Camera::getFrameNC_BAD_TEMP_FUNC()
     {
@@ -280,19 +194,21 @@ namespace RVR
                 perror("VIDIOC_QBUF");
                 exit(1);
             }
-            int jpgfile;
-            char filename[100];
-            this->frameNumber += 1;
-            snprintf(filename, sizeof(filename), "/home/debian/frames/%i.jpg", this->frameNumber);
-            if((jpgfile = open((const char*)filename, O_WRONLY | O_CREAT, 0660)) < 0){
-                perror("open");
-                exit(1);
-            }
-            write(jpgfile, this->bufferStart, this->bufferInfo.length);
-            close(jpgfile);
-//            NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
+
+//            int jpgfile;
+//            char filename[100];
+//            this->frameNumber += 1;
+//            snprintf(filename, sizeof(filename), "/home/debian/frames/%i.jpg", this->frameNumber);
+//            if((jpgfile = open((const char*)filename, O_WRONLY | O_CREAT, 0660)) < 0){
+//                perror("open");
+//                exit(1);
+//            }
+//            write(jpgfile, this->bufferStart, this->bufferInfo.length);
+//            close(jpgfile);
+
+            NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
             VLOG(1) << "[ DONE ] GOT FRAME";
-//            return nc;
+            return nc;
         }
         else
         {
