@@ -8,7 +8,7 @@ endif()
 
 INCLUDE_DIRECTORIES("./../rWifi")
 INCLUDE_DIRECTORIES("./../rCore")
-INCLUDE_DIRECTORIES("LinuxHeaders")
+INCLUDE_DIRECTORIES("LinuxHeaders" SYSTEM)
 
 ADD_LIBRARY(rCamera STATIC camera.cpp rCamera.h)
 

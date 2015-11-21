@@ -3,6 +3,9 @@
 //
 
 #include "rCamera.h"
+#include "linux/videodev2.h"
+#include <time.h>
+#include <linux/videodev2.h>
 #include "../rCore/easylogging++.h"
 
 #ifdef USE_OPEN_CV
@@ -20,6 +23,7 @@ namespace RVR
 
     Camera::Camera(NetworkManager *networkManager)
     {
+
         this->networkManager = networkManager;
     }
 
@@ -33,7 +37,7 @@ namespace RVR
             LOG(ERROR) << "Failed to obtain file descriptor for the camera";
             throw std::runtime_error("failed to open camera");
         }
-        VLOG(2) << "[ DONE ] fd ope\n";
+        VLOG(2) << "[ DONE ] fd opened\n";
 
         this->setStreamMode(format, width, height, fps);
 
@@ -41,6 +45,7 @@ namespace RVR
 //        this->setFrameCallback(dummyCallback);
 
         this->initialized = true;
+        this->frameNumber = 0;
     }
 
     void Camera::setStreamMode(PixelFormat pixelFormat, int width, int height, int fps)
@@ -48,15 +53,22 @@ namespace RVR
         VLOG(2) << "Negotiating camera stream mode...";
         struct v4l2_format frameFormat;
         frameFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        VLOG(3) << "frameFormat.type set to: " << frameFormat.type;
         frameFormat.fmt.pix.pixelformat = pixelFormat;
+        VLOG(3) << "frameFormat.pixelformat set to: " << frameFormat.fmt.pix.pixelformat;
         frameFormat.fmt.pix.width = width;
+        VLOG(3) << "frameFormat.width set to: " << frameFormat.fmt.pix.width;
         frameFormat.fmt.pix.height = height;
+        VLOG(3) << "frameFormat.height set to: " << frameFormat.fmt.pix.height;
 
+        VLOG(3) << "Making the IOCTL call to set the frame format...";
+        VLOG(3) << "IOCTL REQUEST = " << VIDIOC_S_FMT;
         if (ioctl(this->cameraFd, VIDIOC_S_FMT, &frameFormat) < 0)
         {
             LOG(ERROR) << "Failed to set the stream mode of the camera";
             throw std::runtime_error("failed to set stream mode");
         }
+        VLOG(3) << "The IOCTL call did not fail :)";
         VLOG(2) << "[ DONE ] stream negotiated\n";
 
         this->frameFormat = frameFormat;
@@ -64,31 +76,45 @@ namespace RVR
         this->frameHeight = height;
         this->fps = fps; // TODO either implement fps handling or remove the parameter
 
+
         VLOG(2) << "Negotiating buffer memory with camera...";
         struct v4l2_requestbuffers bufrequest;
         bufrequest.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        VLOG(3) << "Buffer request type is: " << bufrequest.type;
         bufrequest.memory = V4L2_MEMORY_MMAP;
+        VLOG(3) << "Buffer request memory is: " << bufrequest.memory;
         bufrequest.count = 1;
-
+        VLOG(3) << "Buffer request count is: " << bufrequest.count;
+        VLOG(3) << "Making the IOCTL call to request a buffer...";
+        VLOG(3) << "IOCTL REQUEST = " << VIDIOC_REQBUFS;
         if (ioctl(this->cameraFd, VIDIOC_REQBUFS, &bufrequest) < 0)
         {
             LOG(ERROR) << "Failed to request the buffer for the camera";
             throw std::runtime_error("failed to request camera buffer");
         }
+        VLOG(3) << "The IOCTL call did not fail :)";
 
-        this->bufferInfo;
+        VLOG(3) << "Clearing data out of bufferInfo";
         memset(&this->bufferInfo, 0, sizeof(this->bufferInfo));
 
+        VLOG(3) << "Setting the properties of the frame buffer";
         this->bufferInfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        VLOG(3) << "Frame buffer type is: " << this->bufferInfo.type;
         this->bufferInfo.memory = V4L2_MEMORY_MMAP;
+        VLOG(3) << "Frame buffer memory is: " << this->bufferInfo.memory;
         this->bufferInfo.index = 0;
+        VLOG(3) << "Frame buffer index is: " << this->bufferInfo.index;
 
+        VLOG(3) << "Making the IOCTL to have the camera do its part of populating bufferInfo (with size and such)...";
+        VLOG(3) << "IOCTL REQUEST = " << VIDIOC_QUERYBUF;
         if (ioctl(this->cameraFd, VIDIOC_QUERYBUF, &this->bufferInfo) < 0)
         {
             LOG(ERROR) << "Failed to query the buffer for the camera";
             throw std::runtime_error("failed to query camera buffer");
         }
+        VLOG(3) << "The IOCTL call did not fail :)";
 
+        VLOG(3) << "Getting the actual buffer memory";
         this->bufferStart = (char *) mmap(
                 NULL,
                 this->bufferInfo.length,
@@ -104,6 +130,7 @@ namespace RVR
             exit(1);
         }
 
+        VLOG(3) << "Zeroing out the buffer";
         memset(this->bufferStart, 0, this->bufferInfo.length);
 
         VLOG(2) << "[ DONE ] buffers negotiated\n";
@@ -118,11 +145,15 @@ namespace RVR
     {
         VLOG(2) << "Starting camera stream...";
         int type = this->bufferInfo.type;
+
+        VLOG(3) << "Making the IOCTL to have the camera start streaming...";
+        VLOG(3) << "IOCTL REQUEST = " << VIDIOC_STREAMON;
         if (ioctl(this->cameraFd, VIDIOC_STREAMON, &type) < 0)
         {
             LOG(ERROR) << "Failed to start the camera stream";
             throw std::runtime_error("failed to start stream");
         }
+        VLOG(3) << "The IOCTL call did not fail :)";
         VLOG(2) << "[ DONE ] stream started\n";
 
         this->streaming = true;
@@ -236,7 +267,7 @@ namespace RVR
 
     NetworkChunk *Camera::getFrameNC_BAD_TEMP_FUNC()
     {
-        VLOG(2) << "GETTING FRAME!";
+        VLOG(1) << "GETTING FRAME!";
         if (this->streaming)
         {
             if(ioctl(this->cameraFd, VIDIOC_QBUF, &(this->bufferInfo)) < 0){
@@ -250,19 +281,23 @@ namespace RVR
                 exit(1);
             }
             int jpgfile;
-            if((jpgfile = open("/tmp/myimage.jpeg", O_WRONLY | O_CREAT, 0660)) < 0){
+            char filename[100];
+            this->frameNumber += 1;
+            snprintf(filename, sizeof(filename), "/home/debian/frames/%i.jpg", this->frameNumber);
+            if((jpgfile = open((const char*)filename, O_WRONLY | O_CREAT, 0660)) < 0){
                 perror("open");
                 exit(1);
             }
-
-            NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
-            VLOG(2) << "[ DONE ] GOT FRAME";
-            return nc;
+            write(jpgfile, this->bufferStart, this->bufferInfo.length);
+            close(jpgfile);
+//            NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
+            VLOG(1) << "[ DONE ] GOT FRAME";
+//            return nc;
         }
         else
         {
             NetworkChunk* nc = new NetworkChunk(DataType::NONE, 0, NULL);
-            VLOG(2) << "[ DONE ] NO FRAME TO GET";
+            VLOG(1) << "[ DONE ] NO FRAME TO GET";
             return nc;
         }
     }

@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "linux/videodev2.h"
-
 #include <string>
 #include <queue>
 #include "rWifi.h"
@@ -41,6 +40,7 @@ namespace RVR
     class Camera
     {
     private:
+        int frameNumber;
         int frameWidth;
         int frameHeight;
 
