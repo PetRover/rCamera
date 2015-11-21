@@ -6,76 +6,60 @@
 #ifndef RCORE_RCAMERA_H
 #define RCORE_RCAMERA_H
 
-//#define USE_OPEN_CV
-#include <libuvc/libuvc.h>
+#include <iostream>
+#include <fstream>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <stdio.h>
+#include <string.h>
+#include "linux/videodev2.h"
 #include <string>
 #include <queue>
 #include "rWifi.h"
+#include "../rCore/easylogging++.h"
 
-#define LOCAL_STREAM
-
-#ifdef USE_OPEN_CV
-    #include <opencv2/opencv.hpp>
-#endif
 namespace RVR
 {
-    void processUvcErrorResult(uvc_error errorResult, std::string message);
+    typedef uint32_t PixelFormat;
+
 
     class Camera
     {
     private:
+        int frameNumber;
         int frameWidth;
         int frameHeight;
 
         int fps;
-        uvc_frame_format frameFormat;
+
+        struct v4l2_format frameFormat;
 
         bool streaming = false;
         bool initialized = false;
 
-
-        uvc_context *context;
-        uvc_device *device;
-        uvc_device_handle *deviceHandle;
-        uvc_stream_ctrl_t streamController;
-        uvc_error errorResult;
-
-        uvc_frame_callback_t* frameCallback;
+        int cameraFd;
+        struct v4l2_requestbuffers requestBuffers;
+        struct v4l2_buffer bufferInfo;
+        char* bufferStart;
 
     public:
-        void setupStream(uvc_frame_format format, int width, int height, int fps);
-        void setStreamMode(uvc_frame_format format, int width, int height, int fps);
-        void setFrameCallback(uvc_frame_callback_t callback);
+        void setupStream(PixelFormat pixelFormat, int width, int height, int fps);
+        void setStreamMode(PixelFormat pixelFormat, int width, int height, int fps);
         void setAutoExposure(bool aeOn);
 
         void startStream();
         void stopStream();
-        uvc_frame_format getFrameFormat();
+        v4l2_format getFrameFormat();
+
+        NetworkChunk* getFrameNC_BAD_TEMP_FUNC();
 
         NetworkManager* networkManager;
-
-#ifdef LOCAL_STREAM
-        std::queue<NetworkChunk*> frameQueue = std::queue<NetworkChunk*>();
-#endif
 
         Camera(NetworkManager* networkManager);
         ~Camera();
     };
-
-    void sendFrame(uvc_frame_t* frame, void* camera);
-
-#ifdef LOCAL_STREAM
-    void queueFrame(uvc_frame_t* frame, void* camera);
-#endif
-
-#ifdef USE_OPEN_CV
-    cv::Mat frameToMat(uvc_frame* frame, int matrixType);
-    void saveFrame(uvc_frame_t* frame, void* camera);
-    void showFrame(uvc_frame_t* frame, void* camera);
-#endif
-
-    void dummyCallback(uvc_frame_t* frame, void* camera);
-
 }
 
 #endif //RCORE_RCAMERA_H
