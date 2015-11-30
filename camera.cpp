@@ -4,6 +4,9 @@
 
 #include "rCamera.h"
 
+const int CAMERA_RES_HEIGHT = 480;
+const int CAMERA_RES_WIDTH = 640;
+
 namespace RVR
 {
 
@@ -181,7 +184,7 @@ namespace RVR
 
     NetworkChunk *Camera::getFrameNC_BAD_TEMP_FUNC()
     {
-        VLOG(1) << "GETTING FRAME!";
+        VLOG(3) << "GETTING FRAME!";
         if (this->streaming)
         {
             if(ioctl(this->cameraFd, VIDIOC_QBUF, &(this->bufferInfo)) < 0){
@@ -195,25 +198,14 @@ namespace RVR
                 exit(1);
             }
 
-//            int jpgfile;
-//            char filename[100];
-//            this->frameNumber += 1;
-//            snprintf(filename, sizeof(filename), "/home/debian/frames/%i.jpg", this->frameNumber);
-//            if((jpgfile = open((const char*)filename, O_WRONLY | O_CREAT, 0660)) < 0){
-//                perror("open");
-//                exit(1);
-//            }
-//            write(jpgfile, this->bufferStart, this->bufferInfo.length);
-//            close(jpgfile);
-
             NetworkChunk* nc = new NetworkChunk(DataType::CAMERA, this->bufferInfo.length, this->bufferStart);
-            VLOG(1) << "[ DONE ] GOT FRAME";
+            VLOG(3) << "[ DONE ] GOT FRAME";
             return nc;
         }
         else
         {
             NetworkChunk* nc = new NetworkChunk(DataType::NONE, 0, NULL);
-            VLOG(1) << "[ DONE ] NO FRAME TO GET";
+            VLOG(3) << "[ DONE ] NO FRAME TO GET";
             return nc;
         }
     }

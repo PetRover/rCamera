@@ -20,6 +20,9 @@
 #include "rWifi.h"
 #include "../rCore/easylogging++.h"
 
+extern const int CAMERA_RES_HEIGHT;
+extern const int CAMERA_RES_WIDTH;
+
 namespace RVR
 {
     typedef uint32_t PixelFormat;
